@@ -9,11 +9,10 @@ from pydantic.functional_validators import BeforeValidator
 from datetime import date, datetime, timedelta
 
 from typing_extensions import Annotated
-from ai_chat import generate_response
+from ai_chat import generate_response, advance_generate_response
 
 from bson import ObjectId
 import motor.motor_asyncio
-from pymongo import ReturnDocument
 
 
 app = FastAPI(
@@ -69,23 +68,19 @@ class MessageCollection(BaseModel):
         "/get_ai_chat_response",
         response_description="用户输入问题，通过 ai provider 返回 ai 的回答",
 )
-async def get_ai_chat_response(response: Response, input: MessageInput = Body(...)):
-    period_rate_limit = 3
-    recent_count = await count_collection.count_documents({
-        "user_name": input.user_name,
-        "created_at": {"$gt": datetime.now() - timedelta(seconds=30)}
-    })
-    if recent_count >= period_rate_limit:
-        response.status_code = 401  # Set the status code to 401 Unauthorized
-        return {"detail": "每 30 秒最多发送 3 条信息"}
-    
-    today_limit = 20
-    today_count = await get_chat_count_today(input.user_name)
-    if today_count >= today_limit:
-        response.status_code = 401  # Set the status code to 401 Unauthorized
-        return {"detail": "一天最多发送 20 条信息"}
-
+async def get_ai_chat_response(input: MessageInput = Body(...)):
+    await check_rate_limit(input.user_name)
     ai_answer = await generate_response(input.user_name, input.message)
+    await count_collection.insert_one({"user_name": input.user_name, "created_at": datetime.now()})
+    return {"response": ai_answer}
+
+@app.post(
+        "/get_ai_chat_response_advanced",
+        response_description="在 get_ai_chat_response_advanced API 中集成情感分析模块",
+)
+async def get_ai_chat_response_advanced(input: MessageInput = Body(...)):
+    await check_rate_limit(input.user_name)
+    ai_answer = await advance_generate_response(input.user_name, input.message)
     await count_collection.insert_one({"user_name": input.user_name, "created_at": datetime.now()})
     return {"response": ai_answer}
 
@@ -121,3 +116,17 @@ async def get_chat_count_today(user_name: str):
         }
     })
     return count
+
+async def check_rate_limit(user_name: str):
+    period_rate_limit = 3
+    recent_count = await count_collection.count_documents({
+        "user_name": user_name,
+        "created_at": {"$gt": datetime.now() - timedelta(seconds=30)}
+    })
+    if recent_count >= period_rate_limit:
+        raise HTTPException(status_code=401, detail="每 30 秒最多发送 3 条信息")
+    
+    today_limit = 20
+    today_count = await get_chat_count_today(user_name)
+    if today_count >= today_limit:
+        raise HTTPException(status_code=401, detail="一天最多发送 20 条信息")
