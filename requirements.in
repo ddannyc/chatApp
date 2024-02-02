@@ -1,0 +1,10 @@
+fastapi
+motor
+uvicorn
+pydantic[email]
+langchain
+langchain-openai
+langchain-community
+python-dotenv
+openai
+tiktoken
