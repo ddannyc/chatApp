@@ -12,13 +12,12 @@ from shared import constants
 from typing_extensions import Annotated
 from ai_chat import generate_response, advance_generate_response
 
-from bson import ObjectId
 import motor.motor_asyncio
 
 
 app = FastAPI(
-    title="Student Course API",
-    summary="A sample application showing how to use FastAPI to add a ReST API to a MongoDB collection.",
+    title="聊天机器人",
+    summary="",
 )
 client = motor.motor_asyncio.AsyncIOMotorClient(os.environ["MONGODB_URL"])
 db = client.my_db
