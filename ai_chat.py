@@ -1,9 +1,5 @@
+from datetime import datetime
 import os
-from shared import constants
-from langchain.schema import (
-    HumanMessage,
-)
-from typing import Optional
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.prompt_values import ChatPromptValue
@@ -45,14 +41,12 @@ async def generate_response(session_id: str, input_text: str):
         ]
     )
     chain = prompt | condense_prompt | llm
-    memory = get_memory(session_id)
     chain_with_history = RunnableWithMessageHistory(
         chain,
-        lambda session_id: memory,
+        lambda session_id: get_memory(session_id),
         input_messages_key="question",
         history_messages_key="history",
     )
-    print(memory.messages)
     config = {"configurable": {"session_id": session_id}}
     resp = await chain_with_history.ainvoke({"question": input_text}, config=config)
     return resp.content
@@ -72,10 +66,9 @@ async def advance_generate_response(session_id: str, input_text: str):
         ]
     )
     chain = prompt | condense_prompt | llm
-    memory = get_memory(session_id)
     chain_with_history = RunnableWithMessageHistory(
         chain,
-        lambda session_id: memory,
+        lambda session_id: get_memory(session_id),
         input_messages_key="question",
         history_messages_key="history",
     )
@@ -92,9 +85,3 @@ def get_memory(session_id: str):
         database_name="my_db",
         collection_name="chat_histories",
     )
-
-# print(generate_response("test_session", "Hi! I'm Alan"))
-# print(generate_response("Alan", "Hi! I am Alan"))
-# print(generate_response("Alan", "Whats my name"))
-# print(generate_response("Bob", "Hi! I am Bob"))
-# print(generate_response("Bob", "Whats my name"))

@@ -7,6 +7,7 @@ from fastapi.responses import Response
 from pydantic import ConfigDict, BaseModel, Field, EmailStr
 from pydantic.functional_validators import BeforeValidator
 from datetime import date, datetime, timedelta
+from shared import constants
 
 from typing_extensions import Annotated
 from ai_chat import generate_response, advance_generate_response
@@ -85,6 +86,27 @@ async def get_ai_chat_response_advanced(input: MessageInput = Body(...)):
     return {"response": ai_answer}
 
 @app.get(
+        "/get_user_behavior",
+        response_description="基于用户与 AI 的聊天历史，分析用户的兴趣点和行为模式"
+)
+async def get_user_behavior(user_name: str):
+    # 聚合管道查询
+    pipeline = [
+        # 匹配特定用户的聊天历史
+        {'$match': {'SessionId': user_name}},
+    
+        # 统计关键词频率
+        {'$unwind': '$History'},
+        {'$group': {'_id': '$History', 'count': {'$sum': 1}}},
+        {'$sort': {'count': -1}},
+        {'$limit': 10}
+    ]
+    
+    # 执行聚合查询
+    result = await message_collection.aggregate(pipeline).to_list(10)
+    return result
+
+@app.get(
         "/get_user_chat_history",
         response_description="根据输入参数输出用户的聊天记录",
         response_model=MessageCollection,
@@ -118,15 +140,16 @@ async def get_chat_count_today(user_name: str):
     return count
 
 async def check_rate_limit(user_name: str):
-    period_rate_limit = 3
+    period_rate_limit = constants.DELTA_RATE_LIMIT_COUNT
     recent_count = await count_collection.count_documents({
         "user_name": user_name,
-        "created_at": {"$gt": datetime.now() - timedelta(seconds=30)}
+        "created_at": {"$gt": datetime.now() - timedelta(seconds=constants.DELTA_RATE_LIMIT)}
     })
+    print(recent_count, period_rate_limit)
     if recent_count >= period_rate_limit:
-        raise HTTPException(status_code=401, detail="每 30 秒最多发送 3 条信息")
+        raise HTTPException(status_code=401, detail=f"每 {constants.DELTA_RATE_LIMIT} 秒最多发送 {period_rate_limit} 条信息")
     
-    today_limit = 20
-    today_count = await get_chat_count_today(user_name)
-    if today_count >= today_limit:
-        raise HTTPException(status_code=401, detail="一天最多发送 20 条信息")
+    day_limit = constants.DAY_RATE_LIMIT_COUNT
+    day_count = await get_chat_count_today(user_name)
+    if day_count >= day_limit:
+        raise HTTPException(status_code=401, detail=f"一天最多发送 {day_limit} 条信息")
